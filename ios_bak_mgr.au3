@@ -1,7 +1,7 @@
 #AutoIt3Wrapper_UseX64=N
 #AutoIt3Wrapper_UseUpx=N
-#AutoIt3Wrapper_Compression=4
-;#AutoIt3Wrapper_Icon=.ico
+#AutoIt3Wrapper_Compression=2
+#AutoIt3Wrapper_Icon=iphone_folder.ico
 ;#AutoIt3Wrapper_OutFile=.exe
 #AutoIt3Wrapper_Res_Description=iOS Backup Manager
 #AutoIt3Wrapper_Res_Language=1033
@@ -183,6 +183,23 @@ Func get_backup_info($folder)
 	EndIf
 EndFunc
 
+Func rename_backup($folder, $new_name)
+	If FileExists($backups_path & '\' & $folder & '\Info.plist') Then
+		$file_path = $backups_path & '\' & $folder & '\Info.plist'
+
+		; Read file into string variable
+		$sInfoData = FileRead($file_path)
+
+		; Modify Display Name Value
+		$sInfoData = set_info_item($sInfoData, 'Display Name', 'string', $new_name)
+
+		; Write back to file
+		$fHnd = FileOpen($file_path, $FO_OVERWRITE)
+		FileWrite($fHnd, $sInfoData)
+		FileClose($fHnd)
+	EndIf
+EndFunc
+
 Func get_info_item($data, $key, $type)
 	$sRegExp = '<key>' & $key & '</key>\s*<' & $type & '>(.*)</' & $type & '>'
 	$aMatches = StringRegExp($data, $sRegExp, $STR_REGEXPARRAYMATCH)
@@ -194,6 +211,12 @@ Func get_info_item($data, $key, $type)
 	EndIf
 
 	Return ''
+EndFunc
+
+Func set_info_item($data, $key, $type, $new_value)
+	$sRegExp = '(<key>' & $key & '</key>\s*<' & $type & '>).*(</' & $type & '>)'
+	$data = StringRegExpReplace($data, $sRegExp, '\1' & $new_value & '\2')
+	Return $data
 EndFunc
 
 
@@ -212,14 +235,20 @@ Func ArchiveBackup()
 	$sel_idx = _GUICtrlListView_GetSelectionMark($listview)
 	$backup_idx = $sel_idx + 1
 
-	If $aBackupsArchiveDate[$backup_idx] <> '' Then
-		$folder = $backups_path & '\' & $aBackups[$backup_idx]
+	If $aBackupsArchiveDate[$backup_idx] = '' Then
+		$folder = $aBackups[$backup_idx]
+		$folder_path = $backups_path & '\' & $folder
 
 		$new_folder = $folder
 		$new_folder &= '-' & stringformat("%04d%02d%02d",@YEAR, @MON, @MDAY)
 		$new_folder &= '-' & stringformat("%02d%02d%02d",@HOUR, @MIN, @SEC)
+		$new_folder_path = $backups_path & '\' & $new_folder
 
-		DirMove($folder, $new_folder)
+		DirMove($folder_path, $new_folder_path)
+
+		$new_name = $aBackupsName[$backup_idx] & stringformat(" [%04d-%02d-%02d %02d:%02d]",@YEAR, @MON, @MDAY, @HOUR, @MIN)
+		rename_backup($new_folder, $new_name)
+
 		get_backups()
 	Else
 		MsgBox($MB_OK + $MB_ICONWARNING, $script_name, 'The selected backup is already archived!')
@@ -231,9 +260,10 @@ Func RenameBackup()
 	$backup_idx = $sel_idx + 1
 
 	If $aBackupsArchiveDate[$backup_idx] <> '' Then
-		$folder = $backups_path & '\' & $aBackups[$backup_idx]
-
-
+		$new_name = InputBox('Rename Archived Backup', $aBackupsName[$backup_idx], $aBackupsName[$backup_idx])
+		If $new_name <> "" And $new_name <> $aBackupsName[$backup_idx] Then
+			rename_backup($aBackups[$backup_idx], $new_name)
+		EndIf
 		get_backups()
 	Else
 		MsgBox($MB_OK + $MB_ICONWARNING, $script_name, 'The selected backup is not archived!')
@@ -245,14 +275,20 @@ Func UndoArchiveBackup()
 	$backup_idx = $sel_idx + 1
 
 	If $aBackupsArchiveDate[$backup_idx] <> '' Then
-		$folder = $backups_path & '\' & $aBackups[$backup_idx]
+		$folder = $aBackups[$backup_idx]
+		$folder_path = $backups_path & '\' & $folder
 
 		$new_folder = StringRegExpReplace($folder, '(.*)-\d{8}-\d{6}', '$1')
+		$new_folder_path = $backups_path & '\' & $new_folder
 
 		If FileExists($new_folder) Then
 			MsgBox($MB_OK + $MB_ICONWARNING, $script_name, 'Unable to undo archive!' & @CRLF & @CRLF & 'Another backup was created after the archived backup!')
 		Else
-			DirMove($folder, $new_folder)
+			DirMove($folder_path, $new_folder_path)
+
+			$new_name = StringRegExpReplace($aBackupsName[$backup_idx], '(.*) \[\d{4}-\d{2}-\d{2} \d{2}:\d{2}\]', '$1')
+			rename_backup($new_folder, $new_name)
+
 			get_backups()
 		EndIf
 	Else
